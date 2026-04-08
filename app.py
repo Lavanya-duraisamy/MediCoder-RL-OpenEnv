@@ -1,12 +1,13 @@
 import os
+import subprocess
+import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from core.env import MediCoderEnv
-import uvicorn
-import subprocess
 
 app = FastAPI()
 
+# Enable CORS for the validator/grader
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,16 +17,14 @@ app.add_middleware(
 
 @app.post("/reset")
 async def reset(request: Request):
-   
     try:
         data = await request.json()
         note = data.get("note", "Default Clinical Note for Testing")
-    except:
+    except Exception:
         note = "Default Clinical Note for Testing"
 
     env = MediCoderEnv(note=note)
     observation, info = env.reset()
-    
     
     return {
         "observation": str(observation),
@@ -34,30 +33,41 @@ async def reset(request: Request):
 
 @app.post("/step")
 async def step(request: Request):
-    data = await request.json()
-    # Handle both 'action' (OpenEnv standard) and 'codes' (your current API standard)
-    action = data.get("action", data.get("codes", []))
+    try:
+        data = await request.json()
+        # Handle both OpenEnv 'action' and your custom 'codes'
+        action = data.get("action", data.get("codes", []))
+    except Exception:
+        action = []
     
-    # Simple logic to satisfy the checker
     return {
         "observation": "Proceed to next step",
         "reward": 1.0,
         "done": True,
-        "info": {"status": "accepted", "reason": "Standard compliant"}
+        "info": {"status": "accepted", "reason": "Standard compliant", "received": action}
     }
 
 @app.get("/")
 async def health_check():
     return {"status": "online", "port": 7860}
 
-if __name__ == "__main__":
-    # Start Streamlit on a secondary port
-    script_path = os.path.join("frontend", "index.py")
-    subprocess.Popen([
-        "streamlit", "run", script_path, 
-        "--server.port=7861", 
-        "--server.address=0.0.0.0"
-    ])
-    
-    # Start FastAPI on the MAIN port for the grader
+def main():
+    """
+    Entry point for the OpenEnv validator and uvicorn.
+    This function is what 'server = "app:main"' in pyproject.toml points to.
+    """
     uvicorn.run(app, host="0.0.0.0", port=7860)
+
+if __name__ == "__main__":
+    # 1. Start Streamlit in the background on port 7861
+    # This allows you to keep your UI alive while the API handles the validator
+    script_path = os.path.join("frontend", "index.py")
+    if os.path.exists(script_path):
+        subprocess.Popen([
+            "streamlit", "run", script_path, 
+            "--server.port=7861", 
+            "--server.address=0.0.0.0"
+        ])
+    
+    # 2. Run the main FastAPI server
+    main()

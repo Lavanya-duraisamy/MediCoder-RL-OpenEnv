@@ -1,0 +1,17 @@
+[[package]]
+name = "medicoder-rl"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "openenv" },
+    { name = "fastapi" },
+    { name = "uvicorn" },
+    { name = "pydantic" },
+    { name = "streamlit" },
+    { name = "google-generativeai" },
+    { name = "python-dotenv" },
+    { name = "pandas" },
+]
+
+[metadata]
+lock-version = 1
