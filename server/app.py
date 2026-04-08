@@ -25,7 +25,7 @@ class PatientState:
 state = PatientState()
 
 class ResetRequest(BaseModel):
-    note: str
+    note: Optional[str] = "Default Clinical Note"
 
 class StepAction(BaseModel):
     # Standardizing 'action' for OpenEnv and 'codes' for your UI
@@ -37,8 +37,10 @@ async def health_check():
     return {"status": "online", "port": 7860, "system": "Medi-Coder RL Engine"}
 
 @app.post("/reset")
-async def reset(data: ResetRequest):
-    state.current_observation = data.note
+async def reset(data: Optional[ResetRequest] = None):
+    note_to_use = data.note if (data and data.note) else "Default Clinical Note"
+    
+    state.current_observation = note_to_use
     state.step_count = 0
     return {"observation": state.current_observation, "info": {"status": "initialized"}}
 
@@ -46,8 +48,9 @@ async def reset(data: ResetRequest):
 async def step(data: StepAction):
     state.step_count += 1
     
-    # Check for 'action' (validator standard) or 'codes' (UI standard)
-    proposed = data.action if data.action else (data.codes if data.codes else [])
+    proposed = []
+    if data:
+        proposed = data.action if data.action else (data.codes if data.codes else [])
     
     if not proposed:
         proposed = [get_medical_coding_action(state.current_observation)]
