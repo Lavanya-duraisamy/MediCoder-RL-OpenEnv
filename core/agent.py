@@ -14,7 +14,7 @@ genai.configure(api_key=api_key)
 
 
 model = genai.GenerativeModel('gemini-2.5-flash')
-def get_action(observation):
+def get_medical_coding_action (observation):
     prompt = f"""
     STATE: {observation}
     
