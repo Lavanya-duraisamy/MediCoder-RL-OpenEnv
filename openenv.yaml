@@ -1,0 +1,16 @@
+version: "1.0"
+name: "MediCoder-RL"
+description: "RL Environment for Revenue Cycle Integrity & ICD-10 Verification"
+entrypoint: "python inference.py"  
+  type: "fastapi"
+  port: 8000
+  endpoints:
+    reset: "/reset"
+    step: "/step"
+    state: "/state"
+observation_space:
+  type: "text"
+  description: "Clinical Encounter Note + Feedback"
+action_space:
+  type: "list"
+  description: "Proposed ICD-10 Codes"
