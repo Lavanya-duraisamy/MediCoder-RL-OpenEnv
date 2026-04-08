@@ -2,9 +2,9 @@
 title: MediCoder RL
 emoji: 🏥
 colorFrom: blue
-colorTo: green
-sdk: streamlit
-app_file: frontend/index.py
+colorTo: gray
+sdk: docker
+app_port: 7860
 pinned: false
 ---
 MediCoder is a high-fidelity Reinforcement Learning (RL) environment designed to automate medical coding verification—a $30B problem in healthcare. It features an autonomous agent powered by GPT-4o-mini that extracts ICD-10 codes from clinical notes, which are then validated against a deterministic Policy Engine to ensure revenue integrity.

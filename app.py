@@ -16,18 +16,19 @@ app.add_middleware(
 
 @app.post("/reset")
 async def reset(request: Request):
-    # Try to get the note from the request, otherwise use default
+   
     try:
         data = await request.json()
-        note = data.get("note", "Patient diagnosed with Type 2 Diabetes.")
+        note = data.get("note", "Default Clinical Note for Testing")
     except:
-        note = "Patient diagnosed with Type 2 Diabetes."
-        
+        note = "Default Clinical Note for Testing"
+
     env = MediCoderEnv(note=note)
-    observation, info = env.reset() # Returns (string, dict)
+    observation, info = env.reset()
+    
     
     return {
-        "observation": observation,
+        "observation": str(observation),
         "info": info
     }
 
