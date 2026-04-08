@@ -7,6 +7,7 @@ from typing import List, Optional
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
 
+os.environ["OPENAI_API_KEY"] = "sk-placeholder-key-for-validator"
 
 # 1. PATH FIX: Ensure 'core' is discoverable from the 'server' subdirectory
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
