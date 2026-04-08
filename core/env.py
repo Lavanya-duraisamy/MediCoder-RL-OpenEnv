@@ -9,7 +9,9 @@ class MediCoderEnv:
 
     def reset(self):
         self.done = False
-        return self.state["note"]
+        observation = self.state["note"]
+        info = {"status": "initialized"}
+        return observation, info
 
     def step(self, action):
         # Action is usually a list containing the ICD-10 string
