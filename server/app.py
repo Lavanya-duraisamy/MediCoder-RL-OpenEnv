@@ -1,67 +1,78 @@
+import sys
 import os
-import subprocess
-import uvicorn
+
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Optional
+import uvicorn
+import subprocess
+
+# Now that the path is set, these imports will work
 from core.env import MediCoderEnv
+from core.agent import get_medical_coding_action 
+from core.policy import verify_codes
 
-app = FastAPI()
+app = FastAPI(title="Medi-Coder RL Backend")
 
-# Enable CORS for the validator/grader
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+class PatientState:
+    def __init__(self):
+        self.current_observation = ""
+        self.step_count = 0
 
-@app.post("/reset")
-async def reset(request: Request):
-    try:
-        data = await request.json()
-        note = data.get("note", "Default Clinical Note for Testing")
-    except Exception:
-        note = "Default Clinical Note for Testing"
+state = PatientState()
 
-    env = MediCoderEnv(note=note)
-    observation, info = env.reset()
-    
-    return {
-        "observation": str(observation),
-        "info": info
-    }
+class ResetRequest(BaseModel):
+    note: str
 
-@app.post("/step")
-async def step(request: Request):
-    try:
-        data = await request.json()
-        # Handle both OpenEnv 'action' and your custom 'codes'
-        action = data.get("action", data.get("codes", []))
-    except Exception:
-        action = []
-    
-    return {
-        "observation": "Proceed to next step",
-        "reward": 1.0,
-        "done": True,
-        "info": {"status": "accepted", "reason": "Standard compliant", "received": action}
-    }
+class StepAction(BaseModel):
+    # Standardizing 'action' for OpenEnv and 'codes' for your UI
+    action: Optional[List[str]] = None
+    codes: Optional[List[str]] = None
 
 @app.get("/")
 async def health_check():
-    return {"status": "online", "port": 7860}
+    return {"status": "online", "port": 7860, "system": "Medi-Coder RL Engine"}
+
+@app.post("/reset")
+async def reset(data: ResetRequest):
+    state.current_observation = data.note
+    state.step_count = 0
+    return {"observation": state.current_observation, "info": {"status": "initialized"}}
+
+@app.post("/step")
+async def step(data: StepAction):
+    state.step_count += 1
+    
+    # Check for 'action' (validator standard) or 'codes' (UI standard)
+    proposed = data.action if data.action else (data.codes if data.codes else [])
+    
+    if not proposed:
+        proposed = [get_medical_coding_action(state.current_observation)]
+    
+    reward, status, reason = verify_codes(state.current_observation, proposed)
+    done = (status == "accepted") or (state.step_count >= 3)
+    
+    return {
+        "observation": state.current_observation,
+        "reward": reward,
+        "done": done,
+        "info": {
+            "status": status,
+            "reason": reason,
+            "step_count": state.step_count,
+            "proposed_codes": proposed
+        }
+    }
 
 def main():
-    """
-    Entry point for the OpenEnv validator and uvicorn.
-    This function is what 'server = "app:main"' in pyproject.toml points to.
-    """
     uvicorn.run(app, host="0.0.0.0", port=7860)
 
 if __name__ == "__main__":
-    
+    # Correct path to find the frontend from the server folder
     script_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "index.py")
-    
     if os.path.exists(script_path):
         subprocess.Popen([
             "streamlit", "run", script_path, 
