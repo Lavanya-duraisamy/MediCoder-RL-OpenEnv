@@ -2,9 +2,11 @@ import sys
 import os
 import uvicorn
 import subprocess
+import openai
 from typing import List, Optional
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
+
 
 # 1. PATH FIX: Ensure 'core' is discoverable from the 'server' subdirectory
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
