@@ -16,7 +16,7 @@ dependencies = [
     "streamlit",
     "google-generativeai",
     "python-dotenv",
-    "pandas"
+    "pandas",
     "openai"
 ]
 
