@@ -14,24 +14,17 @@ genai.configure(api_key=api_key)
 
 
 model = genai.GenerativeModel('gemini-2.5-flash')
-def get_medical_coding_action (observation):
+def get_medical_coding_action(observation):
     prompt = f"""
     STATE: {observation}
-    
-    INSTRUCTIONS:
-    - Act as an Autonomous RL Coding Agent.
-    - If a penalty was previously received, justify the policy correction.
-    - If successful, provide a high-confidence summary.
-    - Limit response to 15 words.
-
-    FORMAT:
-    THOUGHT: [Policy-driven reasoning]
-    ACTION: [ICD-10 Code]
+    TASK: Provide the most relevant ICD-10 code.
+    FORMAT: Just the code (e.g., E11.9). No extra text.
     """
-   
-    
     try:
         response = model.generate_content(prompt)
-        return response.text
+        # Clean the response to ensure it's just the code string
+        code = response.text.strip().split()[-1] 
+        return [code] # Return as a LIST so core.policy stays happy
     except Exception as e:
-        return f"THOUGHT: API Error - {str(e)}\nACTION: ERROR"
+        print(f"Agent Error: {e}")
+        return ["ERROR"]
