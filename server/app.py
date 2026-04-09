@@ -85,12 +85,10 @@ async def step(data: Optional[StepAction] = None):
         
         # 2. THE CLAMP: Strictly between 0 and 1 (exclusive) for Validator Compliance
         # Ensures no hard 0.0 or 1.0 which trigger "out of range" errors.
-        if reward >= 1.0:
-            reward = 0.95
-        elif reward <= 0.0:
-            reward = 0.05
+        if status == "accepted":
+            reward = 0.30  # Correct code - safe for summing
         else:
-            reward = max(0.05, min(0.95, float(reward)))
+            reward = 0.05
 
         # Determine if task is finished
         is_done = bool((status == "accepted") or (state.step_count >= 3))
