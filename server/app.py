@@ -112,18 +112,28 @@ async def step(data: Optional[StepAction] = None):
             "info": {"error": str(e)}
         }
 
-def main():
-    # Hugging Face MUST listen on port 7860
-    uvicorn.run(app, host="0.0.0.0", port=7860)
+# ... (all your imports, state, and endpoints stay exactly as they are)
 
-if __name__ == "__main__":
-    # Start Streamlit in the background for the human dashboard
+def main():
+    """
+    Main entry point for the application.
+    Handles background processes and starts the FastAPI server.
+    """
+    # 1. Start Streamlit in the background
     script_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "index.py")
     if os.path.exists(script_path):
+        print("Starting Frontend Dashboard...")
         subprocess.Popen([
             "streamlit", "run", script_path, 
             "--server.port=7861", 
-            "--server.address=0.0.0.0"
+            "--server.address=0.0.0.0",
+            "--server.headless=true"
         ])
     
+    # 2. Start the API immediately
+    # uvicorn.run() is a blocking call, so it must be the last thing in main()
+    print("CRITICAL: Starting Uvicorn on 7860...")
+    uvicorn.run(app, host="0.0.0.0", port=7860, log_level="info")
+
+if __name__ == "__main__":
     main()
