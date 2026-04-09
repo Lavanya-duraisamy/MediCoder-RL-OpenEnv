@@ -3,28 +3,27 @@ import sys
 import requests
 from openai import OpenAI
 
-# 1. Mandatory Environment Variables with Defaults
-API_BASE_URL = os.getenv("API_BASE_URL", "http://0.0.0.0:7860")
-MODEL_NAME = os.getenv("MODEL_NAME", "gemini-1.5-flash")
-HF_TOKEN = os.getenv("HF_TOKEN")
+# 1. READ ENVIRONMENT VARIABLES (As injected by Scaler/Meta)
+# The validator will overwrite these; your defaults are only for local safety
+API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
+# They explicitly asked for API_KEY or HF_TOKEN
+API_KEY = os.getenv("API_KEY") or os.getenv("HF_TOKEN")
 
-# The validator REQUIRES an API Key to initialize the client
-if HF_TOKEN is None:
-    HF_TOKEN = "sk-placeholder-for-validator"
+if not API_KEY:
+    raise ValueError("Missing API_KEY/HF_TOKEN from validator environment")
 
-# 2. Initialize Client
-# We point this to your ALREADY RUNNING FastAPI server (port 7860)
+# 2. INITIALIZE CLIENT (Must use their Proxy)
 client = OpenAI(
     base_url=API_BASE_URL,
-    api_key=HF_TOKEN
+    api_key=API_KEY
 )
 
+# Your server's internal address
+LOCAL_SERVER = "http://0.0.0.0:7860"
+
 def run_task():
-    task_name = "medical-coding"
-    benchmark = "MediCoder-v1"
-    
-    # REQUIRED FORMAT: [START]
-    print(f"[START] task={task_name} env={benchmark} model={MODEL_NAME}")
+    print(f"[START] task=medical-coding env=MediCoder-v1 model={MODEL_NAME}")
     sys.stdout.flush()
     
     rewards = []
@@ -32,38 +31,41 @@ def run_task():
     done = False
     
     try:
-        # Reset the environment via your FastAPI
-        # Using requests directly to ensure we hit your server's logic
-        reset_res = requests.post(f"{API_BASE_URL}/reset", json={"note": "Patient presents with type 2 diabetes."}).json()
+        # Step 1: Reset your local environment
+        reset_res = requests.post(f"{LOCAL_SERVER}/reset").json()
+        current_obs = reset_res.get("obs")
         
         while not done and step_count < 3:
             step_count += 1
             
-            # Request action from your server's agent logic
-            step_res = requests.post(f"{API_BASE_URL}/step", json={}).json()
+            # Step 2: MAKE THE PROXY API CALL (This is what they are looking for)
+            response = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[
+                    {"role": "system", "content": "You are a medical coder. Output ONLY the ICD-10 code."},
+                    {"role": "user", "content": f"Clinical Note: {current_obs}"}
+                ],
+                temperature=0.0
+            )
+            action = response.choices[0].message.content.strip()
             
-            # Standardized keys we fixed in app.py
+            # Step 3: Send that action to YOUR server to get reward/done status
+            step_res = requests.post(f"{LOCAL_SERVER}/step", json={"action": [action]}).json()
+            
             reward = float(step_res.get("reward", 0.0))
             done = bool(step_res.get("done", False))
-            action_str = str(step_res.get("info", {}).get("proposed_codes", ["N/A"]))
-            
+            current_obs = step_res.get("obs")
             rewards.append(reward)
             
-            # REQUIRED FORMAT: [STEP] (Note the lowercase booleans and 2-decimal floats)
-            done_str = "true" if done else "false"
-            print(f"[STEP] step={step_count} action={action_str} reward={reward:.2f} done={done_str} error=null")
+            print(f"[STEP] step={step_count} action={action} reward={reward:.2f} done={str(done).lower()} error=null")
             sys.stdout.flush()
 
-        # REQUIRED FORMAT: [END]
         success = "true" if sum(rewards) > 0 else "false"
-        rewards_str = ",".join([f"{r:.2f}" for r in rewards])
-        print(f"[END] success={success} steps={step_count} rewards={rewards_str}")
-        sys.stdout.flush()
+        print(f"[END] success={success} steps={step_count} rewards={','.join([f'{r:.2f}' for r in rewards])}")
 
     except Exception as e:
-        # If anything fails, we MUST still print the [END] line or the grader hangs
         print(f"[END] success=false steps={step_count} rewards=0.00 error={str(e)}")
-        sys.stdout.flush()
+    sys.stdout.flush()
 
 if __name__ == "__main__":
     run_task()

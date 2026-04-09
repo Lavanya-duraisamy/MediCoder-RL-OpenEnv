@@ -1,23 +1,18 @@
 import os
-os.environ["OPENAI_API_KEY"] = "sk-placeholder-key-for-validator"
-
 import sys
 import uvicorn
 import subprocess
-import openai
 from typing import List, Optional
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from pydantic import BaseModel
 
-os.environ["OPENAI_API_KEY"] = "sk-placeholder-key-for-validator"
-
-# 1. PATH FIX: Ensure 'core' is discoverable from the 'server' subdirectory
+# 1. PATH FIX: Ensure 'core' is discoverable
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# 2. DEFENSIVE IMPORTS: Prevents the whole container from crashing if an import fails
+# 2. DEFENSIVE IMPORTS
 try:
     from core.env import MediCoderEnv
-    from core.agent import get_medical_coding_action 
+    # We keep the policy checker, but we don't need the internal agent here anymore
     from core.policy import verify_codes
 except ImportError as e:
     print(f"CRITICAL IMPORT ERROR: {e}")
@@ -32,7 +27,7 @@ class PatientState:
 
 state = PatientState()
 
-# 4. REQUEST MODELS (Making all fields Optional to prevent 422 Validation Errors)
+# 4. REQUEST MODELS
 class ResetRequest(BaseModel):
     note: Optional[str] = "Default Clinical Note"
 
@@ -43,7 +38,6 @@ class StepAction(BaseModel):
 # 5. ENDPOINTS
 @app.get("/")
 async def health_check():
-    # Adding extra fields so the validator sees everything is configured correctly
     return {
         "status": "online", 
         "port": 7860, 
@@ -54,9 +48,7 @@ async def health_check():
 @app.post("/reset")
 async def reset(data: Optional[ResetRequest] = None):
     try:
-        # If the validator sends an empty body, use the default note
         note_to_use = data.note if (data and data.note) else "Default Clinical Note"
-        
         state.current_observation = str(note_to_use)
         state.step_count = 0
         
@@ -65,14 +57,15 @@ async def reset(data: Optional[ResetRequest] = None):
             "info": {"status": "initialized"}
         }
     except Exception as e:
-        return {"observation": "Error during reset", "info": {"error": str(e)}}
+        # Standardized to 'obs'
+        return {"obs": "Error during reset", "info": {"error": str(e)}}
 
 @app.post("/step")
 async def step(data: Optional[StepAction] = None):
     try:
         state.step_count += 1
         
-        # Determine if the input used 'action' (OpenEnv standard) or 'codes' (UI standard)
+        # Take the action sent by inference.py (the LLM's output)
         proposed = []
         if data:
             if data.action:
@@ -80,20 +73,22 @@ async def step(data: Optional[StepAction] = None):
             elif data.codes:
                 proposed = data.codes
         
-        # If the input is empty, trigger the LLM Agent to decide
+        # ENVIRONMENT RULE: If inference.py fails to provide a code, we give 0 reward
         if not proposed:
-            agent_result = get_medical_coding_action(state.current_observation)
-            # Ensure agent_result is wrapped in a list for the policy checker
-            proposed = agent_result if isinstance(agent_result, list) else [str(agent_result)]
+            return {
+                "obs": str(state.current_observation),
+                "reward": 0.0,
+                "done": False,
+                "info": {"status": "error", "reason": "No code provided by agent"}
+            }
         
-        # Verify against policies
+        # Verify the LLM's proposed codes against our local policy
         reward, status, reason = verify_codes(state.current_observation, proposed)
         
-        # STRICT TYPE CASTING: Graders fail if types aren't exactly float and bool
         is_done = bool((status == "accepted") or (state.step_count >= 3))
         
         return {
-            "obs": str(state.current_observation),  # Changed from "observation" to "obs"
+            "obs": str(state.current_observation),
             "reward": float(reward),
             "done": is_done,
             "info": {
@@ -104,7 +99,6 @@ async def step(data: Optional[StepAction] = None):
             }
         }
     except Exception as e:
-        # Fail-safe response to prevent 'inference.py' from crashing
         return {
             "obs": str(state.current_observation),
             "reward": -1.0,
@@ -112,14 +106,8 @@ async def step(data: Optional[StepAction] = None):
             "info": {"error": str(e)}
         }
 
-# ... (all your imports, state, and endpoints stay exactly as they are)
-
 def main():
-    """
-    Main entry point for the application.
-    Handles background processes and starts the FastAPI server.
-    """
-    # 1. Start Streamlit in the background
+    # Start Streamlit in the background
     script_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "index.py")
     if os.path.exists(script_path):
         print("Starting Frontend Dashboard...")
@@ -130,8 +118,6 @@ def main():
             "--server.headless=true"
         ])
     
-    # 2. Start the API immediately
-    # uvicorn.run() is a blocking call, so it must be the last thing in main()
     print("CRITICAL: Starting Uvicorn on 7860...")
     uvicorn.run(app, host="0.0.0.0", port=7860, log_level="info")
 
