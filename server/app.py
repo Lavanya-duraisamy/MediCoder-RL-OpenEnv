@@ -62,55 +62,31 @@ async def reset(data: Optional[ResetRequest] = None):
 async def step(data: Optional[StepAction] = None):
     try:
         state.step_count += 1
+        proposed = data.action if (data and data.action) else []
         
-        # Take the action sent by inference.py
-        proposed = []
-        if data:
-            if data.action:
-                proposed = data.action
-            elif data.codes:
-                proposed = data.codes
+        # 1. Get raw status
+        _, status, _ = verify_codes(state.current_observation, proposed)
         
-        # If no code is provided, return a clamped low reward
-        if not proposed:
-            return {
-                "obs": str(state.current_observation),
-                "reward": 0.05,
-                "done": False,
-                "info": {"status": "error", "reason": "No code provided"}
-            }
-        
-        # 1. Get raw reward from policy logic
-        reward, status, reason = verify_codes(state.current_observation, proposed)
-        
-        # 2. THE CLAMP: Strictly between 0 and 1 (exclusive) for Validator Compliance
-        # Ensures no hard 0.0 or 1.0 which trigger "out of range" errors.
+        # 2. THE BULLETPROOF REWARD
+        # We use very small values so the SUM of all steps is always < 1.0
         if status == "accepted":
-            reward = 0.30  # Correct code - safe for summing
+            reward = 0.20  # Total for 3 steps would be 0.60
         else:
-            reward = 0.05
+            reward = 0.02  # Total for 3 fails would be 0.06
+            
+        # Ensure it's never exactly 0 or 1
+        reward = float(max(0.01, min(0.90, reward)))
 
-        # Determine if task is finished
         is_done = bool((status == "accepted") or (state.step_count >= 3))
         
         return {
             "obs": str(state.current_observation),
-            "reward": float(reward),
+            "reward": reward,
             "done": is_done,
-            "info": {
-                "status": str(status),
-                "reason": str(reason),
-                "step_count": int(state.step_count),
-                "proposed_codes": proposed
-            }
+            "info": {"status": status, "step": state.step_count}
         }
     except Exception as e:
-        return {
-            "obs": str(state.current_observation),
-            "reward": 0.05,
-            "done": True,
-            "info": {"error": str(e)}
-        }
+        return {"obs": str(state.current_observation), "reward": 0.01, "done": True}
 
 # 6. EXECUTION LOGIC
 def main():
