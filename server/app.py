@@ -61,7 +61,7 @@ async def reset(data: Optional[ResetRequest] = None):
         state.step_count = 0
         
         return {
-            "observation": state.current_observation, 
+            "obs": state.current_observation, 
             "info": {"status": "initialized"}
         }
     except Exception as e:
@@ -93,7 +93,7 @@ async def step(data: Optional[StepAction] = None):
         is_done = bool((status == "accepted") or (state.step_count >= 3))
         
         return {
-            "observation": str(state.current_observation),
+            "obs": str(state.current_observation),  # Changed from "observation" to "obs"
             "reward": float(reward),
             "done": is_done,
             "info": {
@@ -106,7 +106,7 @@ async def step(data: Optional[StepAction] = None):
     except Exception as e:
         # Fail-safe response to prevent 'inference.py' from crashing
         return {
-            "observation": str(state.current_observation),
+            "obs": str(state.current_observation),
             "reward": -1.0,
             "done": True,
             "info": {"error": str(e)}
