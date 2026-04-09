@@ -6,13 +6,12 @@ from typing import List, Optional
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-# 1. PATH FIX: Ensure 'core' is discoverable
+# 1. PATH FIX: Ensure 'core' is discoverable from the 'server' subdirectory
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # 2. DEFENSIVE IMPORTS
 try:
     from core.env import MediCoderEnv
-    # We keep the policy checker, but we don't need the internal agent here anymore
     from core.policy import verify_codes
 except ImportError as e:
     print(f"CRITICAL IMPORT ERROR: {e}")
@@ -57,7 +56,6 @@ async def reset(data: Optional[ResetRequest] = None):
             "info": {"status": "initialized"}
         }
     except Exception as e:
-        # Standardized to 'obs'
         return {"obs": "Error during reset", "info": {"error": str(e)}}
 
 @app.post("/step")
@@ -65,7 +63,7 @@ async def step(data: Optional[StepAction] = None):
     try:
         state.step_count += 1
         
-        # Take the action sent by inference.py (the LLM's output)
+        # Take the action sent by inference.py
         proposed = []
         if data:
             if data.action:
@@ -73,18 +71,28 @@ async def step(data: Optional[StepAction] = None):
             elif data.codes:
                 proposed = data.codes
         
-        # ENVIRONMENT RULE: If inference.py fails to provide a code, we give 0 reward
+        # If no code is provided, return a clamped low reward
         if not proposed:
             return {
                 "obs": str(state.current_observation),
-                "reward": 0.0,
+                "reward": 0.05,
                 "done": False,
-                "info": {"status": "error", "reason": "No code provided by agent"}
+                "info": {"status": "error", "reason": "No code provided"}
             }
         
-        # Verify the LLM's proposed codes against our local policy
+        # 1. Get raw reward from policy logic
         reward, status, reason = verify_codes(state.current_observation, proposed)
         
+        # 2. THE CLAMP: Strictly between 0 and 1 (exclusive) for Validator Compliance
+        # Ensures no hard 0.0 or 1.0 which trigger "out of range" errors.
+        if reward >= 1.0:
+            reward = 0.95
+        elif reward <= 0.0:
+            reward = 0.05
+        else:
+            reward = max(0.05, min(0.95, float(reward)))
+
+        # Determine if task is finished
         is_done = bool((status == "accepted") or (state.step_count >= 3))
         
         return {
@@ -101,12 +109,14 @@ async def step(data: Optional[StepAction] = None):
     except Exception as e:
         return {
             "obs": str(state.current_observation),
-            "reward": -1.0,
+            "reward": 0.05,
             "done": True,
             "info": {"error": str(e)}
         }
 
+# 6. EXECUTION LOGIC
 def main():
+    """Starts background frontend and main API."""
     # Start Streamlit in the background
     script_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "index.py")
     if os.path.exists(script_path):
@@ -118,6 +128,7 @@ def main():
             "--server.headless=true"
         ])
     
+    # Start Uvicorn immediately
     print("CRITICAL: Starting Uvicorn on 7860...")
     uvicorn.run(app, host="0.0.0.0", port=7860, log_level="info")
 
