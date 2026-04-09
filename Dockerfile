@@ -19,3 +19,5 @@ COPY . .
 EXPOSE 7860
 RUN pip install openai
 CMD ["python", "server/app.py"]
+
+ENV OPENAI_API_KEY=sk-placeholder-key-for-validator

@@ -1,5 +1,7 @@
-import sys
 import os
+os.environ["OPENAI_API_KEY"] = "sk-placeholder-key-for-validator"
+
+import sys
 import uvicorn
 import subprocess
 import openai
